@@ -10,6 +10,6 @@ To run this pipeline we need the folowing information: samplesheet input file, r
 
 Sequencing data have been deposited in the NCBI Sequencing Read Archive under accession PRJNA746661
 
-##Differential expression analysis
+## Differential expression analysis
 
 DESeq and enrichment analysis details: https://github.com/angelaap/NitratiruptorRNA-seq/blob/main/NitratiruptorRNA-seq.Rmd
