@@ -1,0 +1,587 @@
+---
+title: "NitratiruptorRNA_seq"
+author: "Angela Ares"
+date: "`r format(Sys.time(), '%B %d, %Y')`"
+output:
+  html_document:
+    number_sections: yes
+    theme: cerulean
+    toc: yes
+    toc_depth: 5
+    toc_float: yes
+  pdf_document:
+    toc: yes
+    toc_depth: '5'
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(cache=TRUE, fig.path='figures/', fig.width=8, fig.height=5 )
+```
+by adding `fig.path = 'figures/'` we put all of the figures created when we knit this document into a directory called `figures`
+
+
+# Differential Expression Testing
+
+
+Load Libraries: 
+```{r, warning = FALSE, message = FALSE}
+#library(tximport) Not available for version 3.6.0
+library(DESeq2)
+library(tidyverse)
+library(dplyr)
+library("GSEABase")
+#library(clusterProfiler)
+library(RColorBrewer)
+library(pheatmap)
+library(wesanderson)
+library(org.EcK12.eg.db)
+library(org.Sc.sgd.db)
+library(GOstats)
+library(edgeR)
+library(treemap)
+library(tidyverse)
+library(ggplot2)
+library(AnnotationDbi)
+library(gage)
+library(ggraph)
+library(clusterProfiler)
+library(reshape2)
+library(jcolors)
+```
+
+Load data
+```{r}
+sb<-read.csv("~/Documents/Projects OIST/HV/Transcriptome-STEM 2018-2021/RNA results/DESeq2/Nfcore_analysis/Data/matrixc1.csv", header = TRUE)
+```
+
+Define metadata
+```{r}
+treatment <- c("c","c","c","cd","cd","cu","cu")
+strain <- c("SB155","SB155","SB155","SB155","SB155","SB155","SB155")
+sample<-c("c1","c2","c3","cd1","cd2","cu1","cu2")
+gensmeta<- data.frame(strain, treatment, sample)
+rownames(gensmeta)<-c("c1","c2","c3","cd1","cd2","cu1","cu2")
+```
+
+convert first column (refering name of genes) into rownames
+```{r}
+rownames(sb) <- sb[,1]
+```
+
+check type of variables and convert to integer
+```{r}
+sb[,-1]<- lapply(lapply(sb[,-1],round),as.integer) 
+str(sb)
+sbf<- sb[, -1]
+```
+
+make sure the colnames and rownames are the same in both data.frames ("sbf" and "gensmeta")
+```{r}
+all(rownames(gensmeta)==colnames(sbf))
+```
+
+
+Make DESeq object
+```{r}
+dds<- DESeqDataSetFromMatrix(countData = sbf, 
+                             colData = gensmeta, 
+                             design = ~ treatment)
+dds$treatment<- relevel(dds$treatment, ref = "c")
+```
+
+Run DESeq2: 
+```{r, cache = TRUE}
+dds_df <- DESeq(dds)
+```
+
+DEG results
+```{r}
+res<- results(dds_df, alpha = 0.05)
+```
+
+Check out results: 
+```{r}
+cd_res<- results(dds_df, contrast = c("treatment", "cd", "c"), alpha = 0.05)
+cu_res<- results(dds_df, contrast = c("treatment", "cu", "c"), alpha = 0.05)
+head(cd_res)
+head(cu_res)
+```
+
+
+visualize the dispersion (ver primer script)
+```{r}
+plotDispEsts(dds_df)
+```
+DEG result
+```{r}
+res<- results(dds_df, alpha = 0.05)
+```
+
+Summarize results, up and down regulated genes are indicated
+```{r}
+summary(cd_res, alpha=0.05)
+summary(cu_res, alpha=0.05) 
+```
+
+# Visualizing RNA-seq results 
+
+## Normalization
+
+**Count Data Transformations:** 
+for ranking and visualizations (e.g. PCA plots and heatmaps)
+
+**rlog**
+
+```{r, cache=TRUE}
+rld <- rlog(dds, blind=TRUE)
+head(assay(rld), 30)
+```
+
+** Variance stabilizing transformation (so much faster than rlog):**
+
+
+```{r, cache = TRUE}
+vsd <- vst(dds, blind = TRUE)
+head(assay(vsd), 20)
+```
+
+## Ordination
+
+rlog PCA: 
+```{r pca_rld}
+data1 <- plotPCA(rld, intgroup = "treatment", returnData=TRUE)
+data1$group<-gsub(" : ","_",as.character(data1$group))
+percentVar1 <- round(100 * attr(data1, "percentVar"))
+
+PCA<-ggplot(data1, aes(PC1, PC2, color = treatment))+ theme_bw()+
+  geom_point(size=10, alpha = 0.8) + scale_colour_manual(values = c("#E5C616", "#42858C","#D33B44"))+
+  xlab(paste0("PC1: ",percentVar1[1],"% variance")) +
+  ylab(paste0("PC2: ",percentVar1[2],"% variance")) +
+  theme(legend.position = "none")+
+  theme(text = element_text(size=20)) + ggtitle("rlog PCA")
+PCA
+#ggsave("desktop/PCA.pdf", device="pdf", width = 9, height = 5) 
+ggsave("rlogPCA.pdf", device="pdf", width = 7, height = 5) # to save the plot
+```
+
+variance stabilized PCA:
+```{r pca_vst}
+data1 <- plotPCA(vsd, intgroup = "treatment", returnData=TRUE)
+data1$group<-gsub(" : ","_",as.character(data1$group))
+percentVar1 <- round(100 * attr(data1, "percentVar"))
+
+PCA<-ggplot(data1, aes(PC1, PC2, color = treatment))+ theme_bw()+
+  geom_point(size=9, alpha = 0.8) + scale_colour_manual(values = c("#E5C616", "#42858C","#D33B44"))+
+  xlab(paste0("PC1: ",percentVar1[1],"% variance")) +
+  ylab(paste0("PC2: ",percentVar1[2],"% variance")) +
+  
+  theme(text = element_text(size=20)) + ggtitle("vst PCA")
+PCA
+#ggsave("figures/vsd_PCA.png", device="png") # to save the plot
+```
+
+## HeatMaps
+
+rlog HeatMap (este es el bueno):
+```{r heatmap_rld}
+
+df <- as.data.frame(colData(rld)[,c("treatment", "sample")])
+
+mat_colors1<-list(sample = jcolors("pal8")[0:7])
+names(mat_colors1$sample)<- df$sample
+
+mat_colors <- list(treatment = jcolors("pal7")[7:9])
+names(mat_colors$treatment) <- c("c", "cd", "cu")
+
+genes <- order(res$padj)[1:200]
+
+phea<-pheatmap(assay(rld)[genes, ], cluster_rows=TRUE, show_rownames=FALSE,
+         cluster_cols=FALSE, annotation_col=df, annotation_colors = c(mat_colors1, mat_colors), fontsize = 12)
+
+ggsave("heatmap.pdf", device="pdf", width = 9, height = 5) 
+ 
+```
+
+
+
+With Rlog transformed data:
+```{r heatmap_rld_meandiff}
+
+library(jcolors)
+genes <- order(res$padj)[1:200]
+
+mat <- assay(rld)[genes, ]
+mat <- mat - rowMeans(mat)
+
+df <- as.data.frame(colData(rld)[,c("treatment", "sample")])
+
+
+p<- pheatmap(mat,  cluster_rows=TRUE, cluster_cols=FALSE, show_rownames = FALSE, filename = "heatmap.pdf")
+p 
+```
+
+Same but with variance stabilizing function:
+```{r heatmap_vst_meandiff}
+
+mat <- assay(vsd)[genes, ]
+mat <- mat - rowMeans(mat)
+
+df <- as.data.frame(colData(vsd)[,c("treatment", "sample")])
+
+pheatmap(mat,  cluster_rows=TRUE, show_rownames=FALSE, show_colnames = FALSE,
+         cluster_cols=FALSE, annotation_col=df, annotation_colors = c(mat_colors1, mat_colors), fontsize = 12)
+
+```
+
+
+Heatmap of sample-to-sample distances, it can be used instead PCA. 
+```{r heatmap_sampledistance}
+sampleDists <- dist(t(assay(vsd)))
+sampleDistMatrix <- as.matrix(sampleDists)
+rownames(sampleDistMatrix) <- paste(vsd$treatment, vsd$type, sep="-")
+colnames(sampleDistMatrix) <- NULL
+colors <- colorRampPalette( rev(brewer.pal(9, "Blues")) )(255)
+pheatmap(sampleDistMatrix,
+         clustering_distance_rows=sampleDists,
+         clustering_distance_cols=sampleDists,
+         col=colors)
+```
+get data frame of DESeq2 results:
+
+```{r}
+cd_table<- data.frame(cd_res) %>%
+  rownames_to_column(var = "ensgenes")
+cu_table<- data.frame(cu_res) %>%
+  rownames_to_column(var = "ensgenes")
+```
+
+
+Check common DEGs between treatments
+```{r}
+cadup<- filter(cd_table, (padj< 0.05 & log2FoldChange >= 1))
+caddown<- filter(cd_table, (padj< 0.05 & log2FoldChange <= -1))
+
+coup<-filter(cu_table, (padj< 0.05 & log2FoldChange >= 1))
+codown<- filter(cu_table, (padj< 0.05 & log2FoldChange <= -1))
+
+up<- bind_rows(cadup, coup)
+up_d<-up[up$ensgenes %in% up$ensgenes[duplicated(up$ensgenes)],]
+
+down<- bind_rows(caddown, codown)
+down_d<-down[down$ensgenes %in% down$ensgenes[duplicated(down$ensgenes)],]
+
+#keep only the first duplicate
+up_d<-up_d %>% distinct(ensgenes, .keep_all = TRUE)
+down_d<- down_d %>% distinct(ensgenes, .keep_all = TRUE)
+
+```
+
+
+##Volcano plots colored by significance
+
+```{r}
+#add a column of NA
+cd_table$delabel <- NA
+cd_table$delabel[cd_table$diffexpressed != "NO"] <- cd_table$ensgenes[cd_table$diffexpressed != "NO"]
+
+ 
+# add a column of NAs
+cd_table$diffexpressed <- "NO"
+# if log2Foldchange > 1 and pvalue < 0.05, set as "UP" 
+cd_table$diffexpressed[cd_table$log2FoldChange >= 1 & cd_table$padj < 0.05] <- "GENEDE"
+# if log2Foldchange < -0.6 and pvalue < 0.05, set as "DOWN"
+cd_table$diffexpressed[cd_table$log2FoldChange <= -1 & cd_table$padj < 0.05] <- "GENEDE"
+
+
+cdplot<-ggplot(cd_table, aes(x = log2FoldChange, y = -log10(padj), color = diffexpressed, alpha=0.5)) +
+  geom_point(size=3) + 
+  xlab("log2 fold change") +
+  ylab("-log10 adjusted p-value") + 
+  ylim (0,10) +
+  theme (panel.background = element_rect (fill = "white", color = "black", linetype= "solid"), 
+         text = element_text(size=16),
+         legend.position = "none",
+         plot.title = element_text(size = rel(1.1), hjust = 0.5),
+         axis.title = element_text(size = rel(1.1))) +
+        geom_vline(xintercept=c(-1, 1), col="grey", size=0.5) +
+        geom_hline(yintercept=-log10(0.05), col="grey", size=0.5)
+
+cdplot1 <- cdplot + scale_colour_manual(values = c ("#42858C", "#666666"))
+
+
+cu_table$diffexpressed <- "NO"
+# if log2Foldchange > 1 and pvalue < 0.05, set as "UP" 
+cu_table$diffexpressed[cu_table$log2FoldChange >= 1 & cu_table$padj < 0.05] <- "GENEDE"
+# if log2Foldchange < -0.6 and pvalue < 0.05, set as "DOWN"
+cu_table$diffexpressed[cu_table$log2FoldChange <= -1 & cu_table$padj < 0.05] <- "GENEDE"
+
+cuplot<-ggplot(cu_table, aes(x = log2FoldChange, y = -log10(padj), color = diffexpressed, alpha=0.5)) +
+  geom_point(size=3) + 
+  xlab("log2 fold change") +
+  ylab("-log10 adjusted p-value") + 
+  ylim (0,10) +
+  theme (panel.background = element_rect (fill = "white", color = "black", linetype= "solid"), 
+         text = element_text(size=16),
+         legend.position = "none",
+         plot.title = element_text(size = rel(1.1), hjust = 0.5),
+         axis.title = element_text(size = rel(1.1))) +
+        geom_vline(xintercept=c(-1, 1), col="grey", size=0.5) +
+        geom_hline(yintercept=-log10(0.05), col="grey", size=0.5)
+
+cuplot1 <- cuplot + scale_colour_manual(values = c("#D33B44", "#666666"))
+
+
+cdplot1
+ggsave("~/Desktop/Nfcore/volcanocd.pdf", device="pdf", width = 8, height = 5)
+cuplot1
+ggsave("~/Desktop/Nfcore//volcanocu.pdf", device="pdf", width = 8, height = 5)
+
+```
+Prepare list of ensgenes for Venn diagram 
+```{r}
+Cd_f<- filter(cd_table, (padj< 0.05 & log2FoldChange >= 1) | (padj< 0.05 & log2FoldChange <= -1))
+Cdnames<-dplyr::select (Cd_f, c(ensgenes))
+
+Cu_f<- filter(cu_table, (padj< 0.05 & log2FoldChange >= 1) | (padj< 0.05 & log2FoldChange <= -1))
+Cunames<-dplyr::select (Cu_f, c(ensgenes))
+```
+
+
+# Gene Set Enrichment Testing 
+
+get data frame of DESeq2 results:
+
+```{r}
+cd_table<- data.frame(cd_res) %>%
+  rownames_to_column(var = "ensgenes")
+cu_table<- data.frame(cu_res) %>%
+  rownames_to_column(var = "ensgenes")
+```
+
+add annotation table and merge
+```{r}
+annot<- read.csv("~/Desktop/Nfcore/nis_annot.csv")
+cd_annot<- merge(cd_table, annot, by="ensgenes")
+cu_annot<- merge(cu_table, annot, by="ensgenes")
+
+write.csv(cd_annot, file="cd_annot.csv")
+write.csv(cu_annot, file="cu_annot.csv")
+```
+
+table up and down (P=0.05) for enrichment analysis
+```{r}
+
+#DE Up and Down for padj 0.05 and log2FoldChange 1
+
+CdUp<- cd_annot[cd_annot$padj <= 0.05 & cd_annot$log2FoldChange >= 1, ]
+CdUp<-  CdUp[complete.cases(CdUp$ensgenes),]
+CdDown<- cd_annot[cd_annot$padj <= 0.05 & cd_annot$log2FoldChange <= -1, ]
+CdDown<- CdDown[complete.cases(CdDown$ensgenes), ]
+CuUp<- cu_annot[cu_annot$padj <= 0.05 & cu_annot$log2FoldChange >= 1, ]
+CuUp<-  CuUp[complete.cases(CuUp$ensgenes),]
+CuDown<- cu_annot[cu_annot$padj <= 0.05 & cu_annot$log2FoldChange <= -1, ]
+CuDown<-  CuDown[complete.cases(CuDown$ensgenes),]
+
+write.csv(CdUp, file="cd_up_annot.csv")
+write.csv(CdDown, file="cd_down_annot.csv")
+write.csv(CuUp, file="cu_up_annot.csv")
+write.csv(CuDown, file="cu_down_annot.csv")
+
+```
+
+
+```{r}
+#prepare GO terms from the DEGs for revigo input
+CdUp$D <- 1
+CdDown$D <- 0.5
+CuUp$D <- 1
+CuDown$D <- 0.5
+
+#bind
+cd_deg<- bind_rows(CdUp, CdDown)
+cu_deg<- bind_rows(CuUp, CuDown)
+
+#keep GO lists and put in a single column
+cdDE<- cd_deg[ ,c("padj", "GO.IDs", "D")]
+cuDE<- cu_deg[ ,c("padj", "GO.IDs", "D")]
+
+GOcd<- cdDE %>%
+    separate(GO.IDs, c("a", "b", "c", "d", "e", "f", "g", "h"), ";")
+gocdmelt <- melt(GOcd, id = c("padj", "D"))
+cdmeltclean<- gocdmelt[ ,c("padj", "value", "D")]
+
+GOcu<- cuDE %>%
+    separate(GO.IDs, c("a", "b", "c", "d", "e", "f", "g", "h"), ";")
+gocumelt <- melt(GOcu, id = c("padj", "D"))
+cumeltclean<- gocumelt[ ,c("padj", "value", "D")]
+
+#remove empty rows
+cdnona <- cdmeltclean[!(is.na(cdmeltclean$value) | cdmeltclean$value==""), ]
+cunona <- cumeltclean[!(is.na(cumeltclean$value) | cumeltclean$value==""), ]
+
+#remove first characters of the column value
+cdnona$value <- substring(cdnona$value, 3)
+cunona$value <- substring(cunona$value, 3)
+
+#rename
+names(cdnona)[2] <- "GO"
+names(cunona)[2] <- "GO"
+
+#save
+write.csv(cdnona, "~/Desktop/Nfcore/goinputcd.csv")
+write.csv(cunona, "~/Desktop/Nfcore/goinputcu.csv")
+
+```
+
+
+COn mis datos
+```{r}
+
+goframe<- read.csv("~/Desktop/Nfcore/goframe.csv")
+colnames(goframe)
+head(goframe)
+goframesep<- goframe %>%
+    separate(GO, c("a", "b", "c", "d", "e", "f", "g", "h"), ";")
+goframesep2<- goframesep %>%
+    separate(isoform, c("fig", "code", "old_locus"), "\\|")
+goframesep3<-goframesep2[, -c(10:11)]
+goframemelt <- melt(goframesep3, id = c("evidence","old_locus"))
+goframemelt<- goframemelt[, -3]
+colnames(goframemelt)
+names(goframemelt)[names(goframemelt)=="value"]<- "GO"
+goframemelt<- goframemelt[, c(3, 1, 2)]
+     
+goframeData = data.frame(goframemelt$GO, goframemelt$evidence, goframemelt$old_locus)
+names(goframeData) = c("GO", "Evidence", "old_locus")
+goframeData$GO <- as.character(goframeData$GO)
+goframeData$Evidence <- as.character(goframeData$Evidence)
+goframeData$old_locus <- as.character((goframeData$old_locus))
+head(goframeData)
+goframeData <- na.omit(goframeData)
+
+universe<- goframeData[ ,3]
+
+CdUpnames<- CdUp[ ,13]
+CdUpnames<-as.character(CdUpnames)
+
+
+CdDownnames<- CdDown[ ,13]
+CdDownnames<-as.character(CdDownnames)
+
+CuUpnames<- CuUp[ ,13]
+CuUpnames<-as.character(CuUpnames)
+
+CuDownnames<- CuDown[ ,13]
+CuDownnames<-as.character(CuDownnames)
+```
+
+
+Now turn this into a GO frame for GOstats:
+```{r, warning = FALSE, message= FALSE}
+goFrame<- GOFrame(goframeData)
+goAllFrame<- GOAllFrame(goFrame)
+gsc <- GeneSetCollection(goAllFrame, setType = GOCollection())
+```
+
+```{r}
+params<- GSEAGOHyperGParams(name="NIS, C vs. Cd", geneSetCollection= gsc, geneIds = CuDownnames, universeGeneIds = universe, ontology = "BP", pvalueCutoff = 0.05, conditional = TRUE, testDirection = "over")
+
+#modify the function for each dataset (i.e. CdUp, CdDown, CuUp, CuDown)
+
+Over<- hyperGTest(params)
+
+Over
+
+summary(Over)
+CuDownBP<- summary(Over)
+
+
+#Add a column with the element info and ontoly type (BP or MF)
+#CdUpBP$ontology<-"BP"
+#CdUpBP$DE<-"Up"
+#CdUpBP$elem<- "Cd"
+
+#CdDownBP$ontology<-"BP"
+#CdDownBP$DE<-"Down"
+#CdDownBP$elem<- "Cd"
+
+#CuUpBP$ontology<-"BP"
+#CuUpBP$DE<-"Up"
+#CuUpBP$elem<- "Cu"
+
+#CuDownBP$ontology<-"BP"
+#CuDownBP$DE<-"Down"
+#CuDownBP$elem<- "Cu"
+
+
+#repeat the same but with MF (molecular function)
+#params<- GSEAGOHyperGParams(name="NIS, C vs. Cd", geneSetCollection= gsc, geneIds = CuDownnames, universeGeneIds = universe, ontology = "MF", pvalueCutoff = 0.05, conditional = TRUE, testDirection = "over")
+
+#modify the function for each dataset (i.e. CdUp, CdDown, CuUp, CuDown)
+
+#Over<- hyperGTest(params)
+
+#Over
+
+#summary(Over)
+
+#CuDownMF<- summary(Over)
+
+#keep playing with th ontology and geneIDs parameters
+
+#Add a column with the element info and ontoly type (BP or MF)
+#CdUpMF$ontology<-"MF"
+#CdUpMF$DE<-"Up"
+#CdUpMF$elem<- "Cd"
+
+#CdDownMF$ontology<-"MF"
+#CdDownMF$DE<-"Down"
+#CdDownMF$elem<- "Cd"
+
+#CuUpMF$ontology<-"MF"
+#CuUpMF$DE<-"Up"
+#CuUpMF$elem<- "Cu"
+
+#CuDownMF$ontology<-"MF"
+#CuDownMF$DE<-"Down"
+#CuDownMF$elem<- "Cu"
+
+#bind all the tables to have all the results together
+#GOresBP<- rbind(CdUpBP, CdDownBP, CuUpBP, CuDownBP)
+#GOresMF<- rbind(CdUpMF, CdDownMF, CuUpMF, CuDownMF)
+
+#names(GOresBP)[names(GOresBP) == "GOBPID"] <- "GO_id"
+#names(GOresMF)[names(GOresMF) == "GOMFID"] <- "GO_id"
+
+#GOres<- rbind(GOresBP, GOresMF)
+
+#write.csv(GOres, "~/Desktop/Nfcore/GOres.csv")
+```
+
+
+Preparamos la lista de genes, necesitamos nis del resto   
+```{r, warning = FALSE, message= FALSE}
+
+cdupinpu<- CdUp[ ,15]
+cdupinput<-as.vector(cdupinpu)
+
+cddowninpu<- CdDown[ ,15]
+cddowninput<-as.vector(cddowninpu)
+
+cuupinpu<- CuUp[ ,14]
+cuupinput<-as.vector(cuupinpu)
+
+cudowninpu<- CuDown[ ,14]
+cudowninput<-as.vector(cuupinpu)
+
+```
+
+KEGG analysis using kegga function
+```{r, warning = FALSE, message= FALSE}
+cdupkeggs<- kegga(cdupinput, species.KEGG = "nis")
+cddownkeggs<- kegga(cddowninput, species.KEGG = "nis")
+cuupkeggs<- kegga(cuupinput, species.KEGG = "nis")
+cudownkeggs<- kegga(cudowninput, species.KEGG = "nis")
+```
+
+
