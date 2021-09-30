@@ -6,9 +6,11 @@ This repository includes the generated code for Nitratiruptor transcriptome anal
 FASTA files were processed using the Nextflow [nfcore/rnaseq](https://nf-co.re/rnaseq#introduction) (version 3.1) mainly with standard settings. Nf-core is a a community effort to collect a curated set of analysis pipelines built using Nextflow (a workflow tool to run tasks across multiple compute infrastructures in a very portable manner).
 
 Nextflow module was already prepared by the [OIST Bioinformatic User group](https://github.com/oist/BioinfoUgrp) making nf-core pipeline available to OIST users.
-To run this pipeline we need the folowing information: samplesheet input file, reference genome file (gtt, gtf), raw fasta files. 
+To run this pipeline we need the folowing information: 
 
-Sequencing data have been deposited in the NCBI Sequencing Read Archive under accession PRJNA746661
+* samplesheet input file 
+* [reference genome file (gtt, gtf)](https://ftp.ncbi.nlm.nih.gov/genomes/all/GCA/000/010/325/GCA_000010325.1_ASM1032v1/)
+* raw fasta files: sequencing data have been deposited in the NCBI Sequencing Read Archive under accession PRJNA746661
 
 ## Differential expression analysis
 
