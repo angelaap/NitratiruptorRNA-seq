@@ -1,0 +1,9 @@
+group,replicate,fastq_1,fastq_2,strandedness
+Control,1,C2_1.fq.gz,C2_2.fq.gz,reverse
+Control,2,C3_1.fq.gz,C3_2.fq.gz,reverse 
+Cd,1,Cd1_1.fq.gz,Cd1_2.fq.gz,reverse 
+Cd,2,Cd3_1.fq.gz,Cd3_2.fq.gz,reverse 
+Cu,1,Cu_1_1.fq.gz,Cu_1_2.fq.gz,reverse 
+Cu,2,Cu_2_1.fq.gz,Cu_2_2.fq.gz,reverse 
+Mn,1,Mn1_1.fq.gz,Mn1_2.fq.gz,reverse 
+Mn,2,Mn2_1.fq.gz,Mn2_2.fq.gz,reverse
