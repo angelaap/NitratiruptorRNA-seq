@@ -17,6 +17,8 @@ Nextflow pipeline nfcore/rnaseq (version 3.1) was used mainly with standard sett
 * Hisat2 was the aligner selected
 * Trim Galore clipped length was changed to 15 bp. 
 
+
+
 Reads were mapped to the reference sequence Nitratiruptor sp. SB155-2 (GenBank: Assembly: GCA_000010325.1). Gene counts for each sample were extracted from StringTie results using the python script, [prepDE.py](https://linuxtut.com/en/27db85f39f3ae385f451/) and imported into the R statistical environment for further analysis.
 
 
